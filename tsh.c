@@ -177,7 +177,7 @@ void eval(char *cmdline)
     int stdin_redir[MAXARGS];
     int stdout_redir[MAXARGS];
     char *newenviron[] = {NULL};
-    int pipefd[2];
+    int fd[2];
     int lastChildFdRead;
     int groupPid;
     int mostRecentChildPid;
@@ -193,7 +193,16 @@ void eval(char *cmdline)
     // loop for each cmd
     for (int i = 0; i < numCmds; i++)
     {
-        pipe(pipefd);
+        // open pipe if not last cmd
+        if (i < numCmds-1) {
+            if (pipe(fd)==-1) 
+            { 
+                fprintf(stderr,"Pipe Failed" ); 
+                return; 
+            }
+            // fprintf(stderr,"New pipe read: %d; New pipe write: %d;\n", fd[0], fd[1]);
+        }
+
 
         int childPID;
         if ((childPID = fork()) < 0)
@@ -219,6 +228,23 @@ void eval(char *cmdline)
                 dup2(fileno(out),fileno(stdout));
             }
             
+
+            if (numCmds > 1){
+                // fprintf(stderr,"LastChildFdRead: %d. New pipe write: %d\n",lastChildFdRead,fd[1]);
+
+                if (i > 0) {
+                    dup2(lastChildFdRead,fileno(stdin));
+                };
+                // piping for others besides the last
+                if (i < numCmds-1) {
+                    // fprintf(stderr,"not last\n");
+                    // close read end
+                    close(fd[0]);
+                    // dup write to stdout
+                    dup2(fd[1],fileno(stdout));
+                }    
+            }
+
             execve(args[cmds[i]], &args[cmds[i]], newenviron);
             printf("Error executing %s.\n",args[cmds[i]]);
             exit(0);
@@ -227,11 +253,15 @@ void eval(char *cmdline)
         // Parent Process
         else
         {
-            if (i == 0)
-                groupPid = childPID;
-            else
-                setpgid(childPID, groupPid);
+            if (i == 0) groupPid = childPID;
+            else setpgid(childPID, groupPid);
             mostRecentChildPid = childPID;
+
+            // piping
+            if (numCmds > 1) {
+                close(fd[1]);
+                lastChildFdRead = fd[0];
+            }
 
             if (i < numCmds-1) wait(NULL);
         }
