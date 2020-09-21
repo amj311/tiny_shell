@@ -231,7 +231,7 @@ void eval(char *cmdline)
                 groupPid = childPID;
             else
                 setpgid(childPID, groupPid);
-                mostRecentChildPid = childPID;
+            mostRecentChildPid = childPID;
 
             if (i < numCmds-1) wait(NULL);
         }
