@@ -216,14 +216,12 @@ void eval(char *cmdline)
         {
             // handle stdin redirect
             if (stdin_redir[i] > 0) {
-                printf("%s",args[stdin_redir[i]]);
                 FILE* in = fopen(args[stdin_redir[i]], "r");
                 dup2(fileno(in),fileno(stdin));
             }
             
             // handle stdout redirect
             if (stdout_redir[i] > 0) {
-                printf("%s",args[stdout_redir[i]]);
                 FILE* out = fopen(args[stdout_redir[i]], "w");
                 dup2(fileno(out),fileno(stdout));
             }
@@ -246,7 +244,7 @@ void eval(char *cmdline)
             }
 
             execve(args[cmds[i]], &args[cmds[i]], newenviron);
-            printf("Error executing %s.\n",args[cmds[i]]);
+            printf("%s: command not found\n", cmdline);
             exit(0);
         }
 
@@ -270,6 +268,12 @@ void eval(char *cmdline)
     int state = runInBg ? BG : FG;
 
     addjob(jobs, mostRecentChildPid, groupPid, state, cmdline);
+
+    if (state == BG) {
+        struct job_t* job = getjobpid(jobs, groupPid);
+        printf("[%d] (%d) %s\n", job->jid, groupPid, cmdline);
+    }
+
     waitfg(mostRecentChildPid);
 
     return;
@@ -568,10 +572,6 @@ int addjob(struct job_t *jobs, pid_t pid, pid_t pgid, int state, char *cmdline)
             if (verbose)
             {
                 printf("Added job [%d] %d %s\n", jobs[i].jid, jobs[i].pid, jobs[i].cmdline);
-            }
-            else if (state == BG)
-            {
-                printf("[%d] (%d) %s", jobs[i].jid, jobs[i].pid, jobs[i].cmdline);
             }
             return 1;
         }
