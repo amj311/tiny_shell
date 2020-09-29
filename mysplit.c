@@ -23,6 +23,8 @@ int main(int argc, char **argv)
 
 
     if (fork() == 0) { /* child */
+    printf("g: %d    p: %d\n", getpgrp(),getpid());
+    fflush(stdout);
 	for (i=0; i < secs; i++)
 	    sleep(1);
 	exit(0);

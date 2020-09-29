@@ -522,7 +522,7 @@ void sigint_handler(int sig)
         int jid = pid2jid(fgPid);
         printf("Job [%d] (%d) terminated by signal %d",jid,fgPid,sig);
         fflush(stdout);
-        kill(fgPid,sig);
+        kill(-fgPid,sig);
     }
     printf("\n");
     fflush(stdout);
