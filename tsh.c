@@ -80,6 +80,7 @@ struct job_t *getjobpid(struct job_t *jobs, pid_t pid);
 struct job_t *getjobjid(struct job_t *jobs, int jid);
 int pid2jid(pid_t pid);
 void listjobs(struct job_t *jobs);
+void updateJobState(struct job_t *jobs, pid_t pid, int state);
 
 void usage(void);
 void unix_error(char *msg);
@@ -252,7 +253,7 @@ void eval(char *cmdline)
         else
         {
             if (i == 0) groupPid = childPID;
-            else setpgid(childPID, groupPid);
+            setpgid(childPID, groupPid);
             mostRecentChildPid = childPID;
 
             // piping
@@ -466,11 +467,45 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig)
 {
+    sigset_t mask_all, prev_all;
+
     int child_pid;
     int status;
     while ((child_pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0)
     {
-        deletejob(jobs, child_pid);
+        if (child_pid == -1) {
+            perror("waitpid");
+            exit(EXIT_FAILURE);
+        }
+
+        if (child_pid > 0) {
+            if (!WIFSTOPPED(status) && !WIFCONTINUED(status)) {
+                sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+                deletejob(jobs, child_pid);
+                sigprocmask(SIG_BLOCK, &prev_all, NULL);
+            }
+
+            if (WIFEXITED(status)) {
+                // printf("exited, status=%d\n", WEXITSTATUS(status));
+            }
+            else if (WIFSIGNALED(status)) {
+                // printf("killed by signal %d\n", WTERMSIG(status));
+            }
+            else if (WIFSTOPPED(status)) {
+                // printf("stopped by signal %d\n", WSTOPSIG(status));
+                
+                sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+                updateJobState(jobs, child_pid, 3);
+                sigprocmask(SIG_BLOCK, &prev_all, NULL);
+            }
+            else if (WIFCONTINUED(status)) {
+                // printf("continued\n");
+                
+                sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+                // updateJobState(jobs, 1);
+                sigprocmask(SIG_BLOCK, &prev_all, NULL);
+            }
+        }
     }
     return;
 }
@@ -680,6 +715,11 @@ void listjobs(struct job_t *jobs)
             printf("%s", jobs[i].cmdline);
         }
     }
+}
+
+void updateJobState(struct job_t *jobs, pid_t pid, int state) {
+    struct job_t* job = getjobpid(jobs,pid);
+    job->state=state;
 }
 /******************************
  * end job list helper routines
