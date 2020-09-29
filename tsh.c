@@ -529,33 +529,35 @@ void sigchld_handler(int sig)
             exit(EXIT_FAILURE);
         }
 
+        sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+
+        int jid = pid2jid(child_pid);
         if (child_pid > 0) {
-            if (!WIFSTOPPED(status) && !WIFCONTINUED(status)) {
-                sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
-                deletejob(jobs, child_pid);
-                sigprocmask(SIG_BLOCK, &prev_all, NULL);
-            }
 
             if (WIFEXITED(status)) {
-                // printf("exited, status=%d\n", WEXITSTATUS(status));
+                // printf("Job [%d] (%d) terminated by signal %d\n",jid,child_pid,sig);
+                // fflush(stdout);
             }
             else if (WIFSIGNALED(status)) {
-                // printf("killed by signal %d\n", WTERMSIG(status));
+                printf("Job [%d] (%d) terminated by signal %d\n",jid,child_pid,WTERMSIG(status));
+                fflush(stdout);
             }
             else if (WIFSTOPPED(status)) {
-                // printf("stopped by signal %d\n", WSTOPSIG(status));
+                printf("Job [%d] (%d) stopped by signal %d\n",jid,child_pid, WSTOPSIG(status));
+                fflush(stdout);
                 
-                sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
                 updateJobState(jobs, child_pid, ST);
-                sigprocmask(SIG_BLOCK, &prev_all, NULL);
             }
             else if (WIFCONTINUED(status)) {
-                // printf("continued\n");
-                
-                sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
-                // updateJobState(jobs, 1);
-                sigprocmask(SIG_BLOCK, &prev_all, NULL);
             }
+
+
+            if (!WIFSTOPPED(status) && !WIFCONTINUED(status)) {
+                deletejob(jobs, child_pid);
+            }
+
+            sigprocmask(SIG_BLOCK, &prev_all, NULL);
+
         }
     }
     return;
@@ -570,10 +572,7 @@ void sigint_handler(int sig)
 {
     int fgPid = fgpid(jobs);
     if ( fgPid > 0) {
-        int jid = pid2jid(fgPid);
-        printf("Job [%d] (%d) terminated by signal %d",jid,fgPid,sig);
-        fflush(stdout);
-        kill(-fgPid,sig);
+        kill(-fgPid,SIGINT);
     }
     printf("\n");
     fflush(stdout);
@@ -589,10 +588,7 @@ void sigtstp_handler(int sig)
 {
     int fgPid = fgpid(jobs);
     if ( fgPid > 0) {
-        int jid = pid2jid(fgPid);
-        printf("Job [%d] (%d) stopped by signal %d",jid,fgPid,sig);
-        fflush(stdout);
-        kill(-fgPid,sig);
+        kill(-fgPid,SIGTSTP);
     }
     printf("\n");
     fflush(stdout);
