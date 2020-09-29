@@ -245,7 +245,11 @@ void eval(char *cmdline)
             }
 
             execve(args[cmds[i]], &args[cmds[i]], newenviron);
-            printf("%s: command not found\n", cmdline);
+            char cmdlnNoBreak[MAXLINE];
+            for (int i = 0; cmdline[i] != '\n'; i++) cmdlnNoBreak[i] = cmdline[i];
+            // char cmds[MAXLINE];
+            // strcpy(cmds, cmdline);
+            printf("%s: Command not found\n", cmdlnNoBreak);
             exit(0);
         }
 
@@ -439,6 +443,53 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv)
 {
+    sigset_t mask_all, prev_all;
+
+    sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+
+    char* cmd = argv[0];
+    int state = 0;
+    if (strcmp(cmd, "fg") == 0) state = FG; 
+    else if (strcmp(cmd, "bg") == 0) state = BG;
+
+    if (argv[1] == NULL) {
+        printf("%s command requires PID or %%job id argument\n", cmd);
+        return;
+    }
+
+    pid_t jid = 0;
+    if (argv[1][0]=='%') {
+        if ((jid = atoi(((char*)argv[1])+1)) == 0) {
+            printf("%s: argument must be a PID or %%job id\n", cmd);
+            return;
+        };
+    }
+    else {
+        pid_t pid;
+        if ((pid = atoi(argv[1])) == 0) {
+            printf("%s: argument must be a PID or %%job id\n", cmd);
+            return;
+        };
+        if ((jid = pid2jid(pid)) == 0) {
+            printf("(%d): No such process\n", pid);
+            return;
+        }
+    }
+
+    struct job_t* job;
+    if ((job = getjobjid(jobs, jid)) == 0) {
+        printf("%%%d: No such job\n", jid);
+        return;
+    }
+
+    if (job->state == ST) {
+        kill(-1*(job->pid),SIGCONT);
+    }
+    updateJobState(jobs,job->pid,state);
+
+    sigprocmask(SIG_BLOCK, &prev_all, NULL);
+
+    if (state == FG) waitfg(job->pid);
     return;
 }
 
@@ -495,7 +546,7 @@ void sigchld_handler(int sig)
                 // printf("stopped by signal %d\n", WSTOPSIG(status));
                 
                 sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
-                updateJobState(jobs, child_pid, 3);
+                updateJobState(jobs, child_pid, ST);
                 sigprocmask(SIG_BLOCK, &prev_all, NULL);
             }
             else if (WIFCONTINUED(status)) {
@@ -541,7 +592,7 @@ void sigtstp_handler(int sig)
         int jid = pid2jid(fgPid);
         printf("Job [%d] (%d) stopped by signal %d",jid,fgPid,sig);
         fflush(stdout);
-        kill(fgPid,sig);
+        kill(-fgPid,sig);
     }
     printf("\n");
     fflush(stdout);
@@ -720,6 +771,7 @@ void listjobs(struct job_t *jobs)
 void updateJobState(struct job_t *jobs, pid_t pid, int state) {
     struct job_t* job = getjobpid(jobs,pid);
     job->state=state;
+    if (state == BG) printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
 }
 /******************************
  * end job list helper routines
